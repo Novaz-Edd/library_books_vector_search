@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Library — Semantic Search</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"></script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .fade-in { animation: fadeIn .35s ease both; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform: translateY(0);} }
+  .match-bar-bg { background: #e5e7eb; }
+  .match-bar-fill { transition: width .6s ease; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<!-- ======================= Header ======================= -->
+<header class="bg-indigo-700 text-white">
+  <div class="max-w-6xl mx-auto px-4 py-6">
+    <h1 class="text-2xl md:text-3xl font-bold">📚 AI Library — Semantic Search</h1>
+    <p class="text-indigo-100 mt-1 text-sm md:text-base">
+      Search by meaning, not just keywords. Try concepts, moods, or topics.
+    </p>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-8">
+
+  <!-- ======================= Search Workspace ======================= -->
+  <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 md:p-6">
+    <div class="flex flex-col md:flex-row gap-3">
+      <input
+        id="searchInput"
+        type="text"
+        placeholder='Try: "I&#39;m stressed and want something inspiring" or "how stars are formed"'
+        class="flex-1 border border-slate-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      <button id="searchBtn"
+        class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-xl transition">
+        Search
+      </button>
+    </div>
+
+    <!-- Example chips -->
+    <div class="flex flex-wrap gap-2 mt-3">
+      <span class="text-xs text-slate-400 mr-1 mt-1">Try:</span>
+      <button class="example-chip text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-100">I'm stressed and want something inspiring</button>
+      <button class="example-chip text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-100">how stars are formed</button>
+      <button class="example-chip text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-100">coding on laptops</button>
+      <button class="example-chip text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-100">building a startup</button>
+    </div>
+
+    <!-- ======================= Filter Panel ======================= -->
+    <div class="mt-5 pt-4 border-t border-slate-100 flex flex-col md:flex-row md:items-center gap-4">
+      <div>
+        <p class="text-sm font-semibold text-slate-600 mb-2">Floors</p>
+        <div class="flex flex-wrap gap-2" id="floorFilters">
+          <label class="floor-chip cursor-pointer select-none text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:border-indigo-400">
+            <input type="checkbox" value="1" class="floor-checkbox mr-1.5 align-middle"> Floor 1 — Humanities
+          </label>
+          <label class="floor-chip cursor-pointer select-none text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:border-indigo-400">
+            <input type="checkbox" value="2" class="floor-checkbox mr-1.5 align-middle"> Floor 2 — CS / AI
+          </label>
+          <label class="floor-chip cursor-pointer select-none text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:border-indigo-400">
+            <input type="checkbox" value="3" class="floor-checkbox mr-1.5 align-middle"> Floor 3 — Physics / Astro
+          </label>
+          <label class="floor-chip cursor-pointer select-none text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:border-indigo-400">
+            <input type="checkbox" value="4" class="floor-checkbox mr-1.5 align-middle"> Floor 4 — Business
+          </label>
+        </div>
+      </div>
+
+      <div class="md:ml-auto">
+        <label class="flex items-center gap-2 cursor-pointer select-none text-sm font-semibold text-slate-600">
+          <input type="checkbox" id="onlyAvailable" class="w-4 h-4 accent-indigo-600">
+          Show only available books
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= API config notice ======================= -->
+  <div class="mt-4 text-xs text-slate-400" id="apiNotice">
+    Connecting to API at <code id="apiUrlLabel" class="bg-slate-100 px-1.5 py-0.5 rounded"></code>
+    — edit <code class="bg-slate-100 px-1.5 py-0.5 rounded">API_BASE</code> in the script if your backend runs elsewhere.
+  </div>
+
+  <!-- ======================= Status / Loading ======================= -->
+  <div id="statusArea" class="mt-6 text-sm text-slate-500"></div>
+
+  <!-- ======================= Results Grid ======================= -->
+  <section id="results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-4"></section>
+
+</main>
+
+<script>
+  // -------------------------------------------------------------------
+  // Configuration
+  // -------------------------------------------------------------------
+  const API_BASE = "http://localhost:8000";
+  document.getElementById("apiUrlLabel").textContent = API_BASE;
+
+  const FLOOR_LABELS = {
+    1: "Floor 1 — Humanities & Arts",
+    2: "Floor 2 — CS / AI / Engineering",
+    3: "Floor 3 — Physics & Astronomy",
+    4: "Floor 4 — Business & Finance",
+  };
+
+  const searchInput = document.getElementById("searchInput");
+  const searchBtn = document.getElementById("searchBtn");
+  const resultsEl = document.getElementById("results");
+  const statusEl = document.getElementById("statusArea");
+  const onlyAvailableEl = document.getElementById("onlyAvailable");
+
+  // -------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------
+  function getSelectedFloors() {
+    return Array.from(document.querySelectorAll(".floor-checkbox:checked"))
+      .map(cb => parseInt(cb.value, 10));
+  }
+
+  function matchColor(pct) {
+    if (pct >= 75) return "bg-emerald-500";
+    if (pct >= 50) return "bg-amber-500";
+    return "bg-slate-400";
+  }
+
+  function bookCard(book) {
+    const pct = Math.round(book.similarity * 100);
+    const outOfStock = book.stock_available <= 0;
+
+    const cardBorder = outOfStock ? "border-red-200" : "border-slate-200";
+    const stockBadge = outOfStock
+      ? `<span class="text-xs font-semibold bg-red-100 text-red-700 px-2 py-1 rounded-full">Out of stock</span>`
+      : `<span class="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">${book.stock_available} of ${book.stock_total} available</span>`;
+
+    return `
+      <div class="fade-in bg-white rounded-2xl shadow-sm border ${cardBorder} p-5 flex flex-col gap-3 ${outOfStock ? 'opacity-90' : ''}">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h3 class="font-bold text-lg leading-snug ${outOfStock ? 'text-red-700' : 'text-slate-800'}">${book.title}</h3>
+            <p class="text-sm text-slate-500">by ${book.author}</p>
+          </div>
+          ${stockBadge}
+        </div>
+
+        <p class="text-sm text-slate-600 line-clamp-3">${book.description}</p>
+
+        <div>
+          <div class="flex justify-between text-xs font-medium text-slate-500 mb-1">
+            <span>Concept Match</span>
+            <span>${pct}%</span>
+          </div>
+          <div class="w-full h-2 rounded-full match-bar-bg overflow-hidden">
+            <div class="h-2 rounded-full match-bar-fill ${matchColor(pct)}" style="width:${pct}%"></div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
+          <div class="flex items-center gap-1.5 text-slate-600">
+            <span>📍</span>
+            <span>${FLOOR_LABELS[book.floor] || "Floor " + book.floor} · ${book.shelf}</span>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mt-1">
+          <button data-id="${book.id}" class="checkout-btn flex-1 text-sm font-semibold rounded-lg px-3 py-2 transition
+            ${outOfStock ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}"
+            ${outOfStock ? 'disabled' : ''}>
+            Check out
+          </button>
+          <button data-id="${book.id}" class="return-btn flex-1 text-sm font-semibold rounded-lg px-3 py-2 transition
+            border border-slate-300 text-slate-600 hover:bg-slate-50">
+            Return
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderResults(books) {
+    if (!books.length) {
+      resultsEl.innerHTML = "";
+      statusEl.innerHTML = `<p class="text-center py-10 text-slate-400">No books matched your search and filters. Try different terms or fewer filters.</p>`;
+      return;
+    }
+    statusEl.innerHTML = `<p>Found <span class="font-semibold">${books.length}</span> result${books.length === 1 ? '' : 's'}</p>`;
+    resultsEl.innerHTML = books.map(bookCard).join("");
+  }
+
+  // -------------------------------------------------------------------
+  // API calls
+  // -------------------------------------------------------------------
+  async function runSearch() {
+    const query = searchInput.value.trim();
+    const floor_filter = getSelectedFloors();
+    const only_available = onlyAvailableEl.checked;
+
+    statusEl.innerHTML = `<p class="text-indigo-500">🔎 Searching catalog…</p>`;
+    resultsEl.innerHTML = "";
+
+    try {
+      const res = await fetch(`${API_BASE}/api/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: query || "interesting books",
+          floor_filter: floor_filter.length ? floor_filter : null,
+          only_available,
+          top_k: 12,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const books = await res.json();
+      renderResults(books);
+    } catch (err) {
+      statusEl.innerHTML = `
+        <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
+          <p class="font-semibold mb-1">Couldn't reach the API.</p>
+          <p>Make sure the FastAPI backend is running at <code class="bg-white px-1 rounded">${API_BASE}</code>
+          (run <code class="bg-white px-1 rounded">uvicorn backend:app --reload --port 8000</code>).</p>
+          <p class="mt-1 text-xs text-red-500">${err.message}</p>
+        </div>`;
+    }
+  }
+
+  async function changeStock(bookId, action, btn) {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "…";
+    try {
+      const res = await fetch(`${API_BASE}/api/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book_id: bookId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Request failed (${res.status})`);
+      }
+      // Re-run the current search so cards reflect updated stock in real time.
+      await runSearch();
+    } catch (err) {
+      alert(err.message);
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Event wiring
+  // -------------------------------------------------------------------
+  searchBtn.addEventListener("click", runSearch);
+  searchInput.addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
+
+  document.querySelectorAll(".floor-checkbox, #onlyAvailable").forEach(el => {
+    el.addEventListener("change", runSearch);
+  });
+
+  document.querySelectorAll(".example-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      searchInput.value = chip.textContent;
+      runSearch();
+    });
+  });
+
+  resultsEl.addEventListener("click", (e) => {
+    const checkoutBtn = e.target.closest(".checkout-btn");
+    const returnBtn = e.target.closest(".return-btn");
+    if (checkoutBtn && !checkoutBtn.disabled) changeStock(checkoutBtn.dataset.id, "checkout", checkoutBtn);
+    if (returnBtn) changeStock(returnBtn.dataset.id, "return", returnBtn);
+  });
+
+  // Initial load: show everything
+  runSearch();
+</script>
+
+</body>
+</html>
